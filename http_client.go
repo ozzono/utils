@@ -12,13 +12,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Rest struct {
+type Client struct {
 	method        string
 	url           string
 	timeout       time.Duration
 	retryAttempts int
 	retryDelay    time.Duration
-	retryRuleF    func(request *Rest, response *Response, err error) bool
+	retryRuleF    func(request *Client, response *Response, err error) bool
 	param         map[string]string
 	query         map[string][]string
 	header        map[string][]string
@@ -33,8 +33,8 @@ type Response struct {
 	Body       string
 }
 
-func NewRest(method string, url string) *Rest {
-	rest := &Rest{
+func NewRest(method string, url string) *Client {
+	rest := &Client{
 		method:        method,
 		url:           url,
 		timeout:       2 * time.Second,
@@ -58,81 +58,81 @@ func add(current []string, values ...interface{}) []string {
 	return current
 }
 
-func (r *Rest) Timeout(timeout time.Duration) *Rest {
-	r.timeout = timeout
-	return r
+func (c *Client) Timeout(timeout time.Duration) *Client {
+	c.timeout = timeout
+	return c
 }
 
-func (r *Rest) Retry(attempts int, delay time.Duration, ruleF func(request *Rest, response *Response, err error) bool) *Rest {
-	r.retryAttempts = attempts
-	r.retryDelay = delay
-	r.retryRuleF = ruleF
-	return r
+func (c *Client) Retry(attempts int, delay time.Duration, ruleF func(request *Client, response *Response, err error) bool) *Client {
+	c.retryAttempts = attempts
+	c.retryDelay = delay
+	c.retryRuleF = ruleF
+	return c
 }
 
-func (r *Rest) Param(param map[string]string) *Rest {
-	r.param = param
-	return r
+func (c *Client) Param(param map[string]string) *Client {
+	c.param = param
+	return c
 }
 
-func (r *Rest) AddParam(name string, value interface{}) *Rest {
-	r.param[name] = fmt.Sprintf("%v", value)
-	return r
+func (c *Client) AddParam(name string, value interface{}) *Client {
+	c.param[name] = fmt.Sprintf("%v", value)
+	return c
 }
 
-func (r *Rest) Query(query map[string][]string) *Rest {
-	r.query = query
-	return r
+func (c *Client) Query(query map[string][]string) *Client {
+	c.query = query
+	return c
 }
 
-func (r *Rest) AddQuery(name string, value ...interface{}) *Rest {
-	r.query[name] = add(r.query[name], value...)
-	return r
+func (c *Client) AddQuery(name string, value ...interface{}) *Client {
+	c.query[name] = add(c.query[name], value...)
+	return c
 }
 
-func (r *Rest) Header(header map[string][]string) *Rest {
-	r.header = header
-	return r
+func (c *Client) Header(header map[string][]string) *Client {
+	c.header = header
+	return c
 }
 
-func (r *Rest) AddHeader(name string, value ...interface{}) *Rest {
-	r.header[name] = add(r.header[name], value...)
-	return r
+func (c *Client) AddHeader(name string, value ...interface{}) *Client {
+	c.header[name] = add(c.header[name], value...)
+	return c
 }
 
-func (r *Rest) Form(form map[string][]string) *Rest {
-	r.form = form
-	return r
+func (c *Client) Form(form map[string][]string) *Client {
+	c.form = form
+	return c
 }
 
-func (r *Rest) AddForm(name string, value ...interface{}) *Rest {
-	r.form[name] = add(r.form[name], value...)
-	return r
+func (c *Client) AddForm(name string, value ...interface{}) *Client {
+	c.form[name] = add(c.form[name], value...)
+	return c
 }
 
-func (r *Rest) Body(body []byte) *Rest {
-	r.body = body
-	return r
+func (c *Client) Body(body []byte) *Client {
+	c.body = body
+	return c
 }
 
-func (r *Rest) Records(records interface{}) *Rest {
-	r.records = records
-	return r
+func (c *Client) Records(records interface{}) *Client {
+	c.records = records
+	return c
 }
 
-func (r *Rest) Send() (*Response, error) {
-	return r.send(r.retryAttempts)
+func (c *Client) Send() (*Response, error) {
+	return c.send(c.retryAttempts)
 }
 
-func (r *Rest) send(attempts int) (*Response, error) {
-	urlParsed, err := url.Parse(r.url)
+func (c *Client) send(attempts int) (*Response, error) {
+	urlParsed, err := url.Parse(c.url)
 	if err != nil {
 		return nil, errors.Wrap(err, "url.Parse")
 	}
 
 	query := url.Values{}
 
-	for name, values := range r.query {
+	for name, values := range c.query {
 		for _, value := range values {
 			query.Add(name, value)
 		}
@@ -140,18 +140,18 @@ func (r *Rest) send(attempts int) (*Response, error) {
 
 	urlParsed.RawQuery = query.Encode()
 
-	req, err := http.NewRequest(r.method, urlParsed.String(), bytes.NewReader(r.body))
+	req, err := http.NewRequest(c.method, urlParsed.String(), bytes.NewReader(c.body))
 	if err != nil {
 		return nil, errors.Wrap(err, "http.NewRequest")
 	}
 
-	for name, values := range r.header {
+	for name, values := range c.header {
 		for _, value := range values {
 			req.Header.Add(name, value)
 		}
 	}
 
-	for name, values := range r.form {
+	for name, values := range c.form {
 		for _, value := range values {
 			req.Form.Add(name, value)
 		}
@@ -165,7 +165,7 @@ func (r *Rest) send(attempts int) (*Response, error) {
 
 	httpClient := http.Client{
 		Transport: &transport,
-		Timeout:   r.timeout,
+		Timeout:   c.timeout,
 	}
 
 	var responseErr error
@@ -190,9 +190,9 @@ func (r *Rest) send(attempts int) (*Response, error) {
 	}
 
 	if attempts > 0 {
-		if retry := r.retryRuleF(r, response, responseErr); retry {
-			time.Sleep(r.retryDelay)
-			return r.send(attempts - 1)
+		if retry := c.retryRuleF(c, response, responseErr); retry {
+			time.Sleep(c.retryDelay)
+			return c.send(attempts - 1)
 		}
 	}
 
